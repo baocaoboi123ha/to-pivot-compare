@@ -16,7 +16,7 @@ import openpyxl
 from openpyxl.styles import Border, Font, Side
 from openpyxl.utils import get_column_letter
 
-ENGINE_VERSION = "2026-09-25.6"
+ENGINE_VERSION = "2026-09-25.7"
 COLUMN_LAYOUT = (
     "Ma san pham | Ten san pham | Topos SL | Topos Unit | BC SL | BC Unit | "
     "Chenh lech SL | Status | Ma bill Topos lech"
@@ -573,6 +573,24 @@ def _format_date(d: date) -> str:
     return d.strftime("%d/%m/%Y")
 
 
+def _format_qty_cell_value(val) -> int | float:
+    """Whole numbers as int (1 not 1.); decimals kept without trailing-dot artifacts."""
+    if val is None or val == "":
+        return 0
+    f = float(val)
+    if abs(f - round(f)) < 1e-9:
+        return int(round(f))
+    return round(f, 8)
+
+
+def _apply_qty_cell_format(cell, value: int | float) -> None:
+    cell.value = value
+    if isinstance(value, int):
+        cell.number_format = "0"
+    else:
+        cell.number_format = "0.########"
+
+
 def _preview_product_rows(rows: list[tuple], limit: int = WEB_PREVIEW_ROWS) -> list[dict]:
     out: list[dict] = []
     for row in rows[:limit]:
@@ -583,11 +601,11 @@ def _preview_product_rows(rows: list[tuple], limit: int = WEB_PREVIEW_ROWS) -> l
                 "Date": _format_date(row[2]) if isinstance(row[2], date) else row[2],
                 "Ma san pham": row[3],
                 "Ten san pham": row[4],
-                "Topos SL": row[5],
+                "Topos SL": _format_qty_cell_value(row[5]),
                 "Topos Unit": row[6],
-                "BC SL": row[7],
+                "BC SL": _format_qty_cell_value(row[7]),
                 "BC Unit": row[8],
-                "Chenh lech SL": row[9],
+                "Chenh lech SL": _format_qty_cell_value(row[9]),
                 "Status": row[10],
                 "Ma bill Topos lech": row[11],
             }
@@ -622,16 +640,16 @@ def _write_data_table(
         cell.border = _BORDER
     for r_idx, row in enumerate(rows, start_row + 1):
         for c_idx, val in enumerate(row, 1):
-            if c_idx in date_cols and isinstance(val, date):
-                out = _format_date(val)
-            elif c_idx in unit_cols:
-                out = _display_unit(val) or ""
-            else:
-                out = val
-            cell = ws.cell(r_idx, c_idx, out)
-            cell.border = _BORDER
             if c_idx in qty_cols:
-                cell.number_format = "0.########"
+                cell = ws.cell(r_idx, c_idx)
+                _apply_qty_cell_format(cell, _format_qty_cell_value(val))
+            elif c_idx in date_cols and isinstance(val, date):
+                cell = ws.cell(r_idx, c_idx, _format_date(val))
+            elif c_idx in unit_cols:
+                cell = ws.cell(r_idx, c_idx, _display_unit(val) or "")
+            else:
+                cell = ws.cell(r_idx, c_idx, val)
+            cell.border = _BORDER
     return start_row + len(rows)
 
 
