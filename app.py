@@ -22,14 +22,22 @@ importlib.reload(engine)
 XLSX = ["xlsx"]
 
 st.set_page_config(
-    page_title="TO Pivot Compare",
+    page_title=f"TO Pivot Compare {engine.ENGINE_VERSION}",
     page_icon="📊",
     layout="centered",
 )
 
-st.title("TO Pivot Compare (Topos vs BC)")
+with st.sidebar:
+    st.markdown(f"## {engine.ENGINE_VERSION}")
+    st.caption("TO Pivot Compare")
+    st.markdown(
+        "Phien ban nay: bo qua **Tra** khi cong SL Topos; "
+        "nhan cot **Don Vi Tinh** / **Loai Chung Tu**."
+    )
+
+st.title(f"TO Pivot Compare {engine.ENGINE_VERSION}")
 st.caption(
-    f"Engine **{engine.ENGINE_VERSION}** — Chi xuat dong pivot lech; "
+    "Chi xuat dong pivot lech; "
     "Ten san pham, Topos SL/Unit, BC SL/Unit, Status, Ma bill Topos lech."
 )
 
@@ -46,6 +54,7 @@ st.markdown(
 
 **Quy tac doi chieu**
 - **Topos:** `TransferFromCode`, `TransferToCode`, `Ngay`/`Date`, `Ma san pham`, tong `So luong`, `Don vi`.
+  Dong **Loai HD = Tra** bi bo qua khi cong SL (tranh Tra am huy Ban; BC chi co SL Ban).
 - **BC:** cung bo Transfer + `PostingDate`, `ItemNo` (map sang Ma SP qua `Item Reference No.` hoac ten san pham).
 - **Ma bill lech:** gom theo tung dong pivot lech (nhieu bill cach nhau boi `;`).
 """

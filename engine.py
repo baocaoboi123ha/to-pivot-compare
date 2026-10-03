@@ -16,14 +16,15 @@ import openpyxl
 from openpyxl.styles import Border, Font, Side
 from openpyxl.utils import get_column_letter
 
-ENGINE_VERSION = "2026-09-25.7"
+# Hien thi ro tren Streamlit / sheet ket qua / ten file tai ve.
+ENGINE_VERSION = "v1.2.0"
 COLUMN_LAYOUT = (
     "Ma san pham | Ten san pham | Topos SL | Topos Unit | BC SL | BC Unit | "
     "Chenh lech SL | Status | Ma bill Topos lech"
 )
 
 QTY_TOLERANCE = 1e-6
-OUTPUT_SUFFIX = " - PivotCompare v5.xlsx"
+OUTPUT_SUFFIX = f" - PivotCompare {ENGINE_VERSION}.xlsx"
 RESULT_SHEET = "Ket qua lech ma SP"
 TOPOS_SHEET = "Topos"
 BC_SHEET = "BC"
@@ -59,9 +60,25 @@ TOPOS_ALIASES: dict[str, tuple[str, ...]] = {
     "date": ("ngay", "date", "postingdate"),
     "product": ("masanpham", "masp", "productcode", "itemno"),
     "qty": ("soluong", "quantity", "qty"),
-    "unit": ("donvi", "unit", "unitofmeasure", "uom"),
+    "unit": (
+        "donvi",
+        "donvitinh",
+        "dvt",
+        "unit",
+        "unitofmeasure",
+        "uom",
+    ),
     "bill": ("mabill", "bill", "billno", "documentno"),
     "name": ("tensanpham", "description", "itemname"),
+    # Ban / Tra — Tra (return) must not net against Ban when comparing to BC.
+    "doctype": (
+        "loaihd",
+        "loaihoadon",
+        "loaichungtu",
+        "loai",
+        "doctype",
+        "transactiontype",
+    ),
 }
 
 BC_ALIASES: dict[str, tuple[str, ...]] = {
@@ -186,6 +203,28 @@ def resolve_columns(
 
 
 BC_OPTIONAL = frozenset({"itemref"})
+TOPOS_OPTIONAL = frozenset({"doctype"})
+
+# Normalized Loai HD values treated as returns (excluded from Topos qty pivot).
+_TOPOS_RETURN_TYPES = frozenset(
+    {
+        "tra",
+        "trahang",
+        "return",
+        "returns",
+        "credit",
+        "creditmemo",
+    }
+)
+
+
+def _is_topos_return(value) -> bool:
+    """True for Topos return docs (Loai HD = Tra); those qty are negative and net Ban."""
+    n = normalize_text(value)
+    if not n:
+        return False
+    n = n.replace(" ", "")
+    return n in _TOPOS_RETURN_TYPES
 
 
 def _display_unit(raw) -> str:
@@ -415,16 +454,22 @@ def pivot_topos(rows: list[tuple], log: Callable[[str], None]) -> tuple[dict, di
     if not rows:
         raise CompareError("Sheet Topos trong.")
     headers = rows[0]
-    cols = resolve_columns(headers, TOPOS_ALIASES)
+    cols = resolve_columns(headers, TOPOS_ALIASES, TOPOS_OPTIONAL)
     data = rows[1:]
     pivot: dict[tuple, Agg] = defaultdict(Agg)
     bill_pivot: dict[tuple, Agg] = defaultdict(Agg)
 
     skipped_date = 0
+    skipped_return = 0
+    doctype_idx = cols.get("doctype")
     for row in data:
         d = parse_date(row[cols["date"]])
         if d is None:
             skipped_date += 1
+            continue
+        if doctype_idx is not None and _is_topos_return(row[doctype_idx]):
+            # BC transfer lines are Ban-equivalent; Tra would cancel Ban (e.g. 8008-8000=8).
+            skipped_return += 1
             continue
         product = str(row[cols["product"]]).strip()
         from_c = str(row[cols["transferfromcode"]]).strip()
@@ -440,6 +485,10 @@ def pivot_topos(rows: list[tuple], log: Callable[[str], None]) -> tuple[dict, di
 
     if skipped_date:
         log(f"Topos: bo qua {skipped_date} dong khong doc duoc ngay.")
+    if skipped_return:
+        log(f"Topos: bo qua {skipped_return} dong Loai HD Tra (khong cong vao SL so voi BC).")
+    elif doctype_idx is None:
+        log("Topos: khong thay cot Loai HD — khong loc Tra.")
     log(f"Topos pivot: {len(pivot)} khoa.")
     return pivot, bill_pivot, data, cols
 
